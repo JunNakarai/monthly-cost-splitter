@@ -1,12 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MonthlyForm } from "@/components/MonthlyForm";
 import { MonthlyChart } from "@/components/MonthlyChart";
 import { MonthlyList } from "@/components/MonthlyList";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { SyncPanel } from "@/components/SyncPanel";
 import { currentMonthValue, nextMonthValue } from "@/lib/defaults";
 import { recordsFromCsv } from "@/lib/csv";
+import { saveCloudData, subscribeCloudData } from "@/lib/cloudStorage";
+import {
+  isFirebaseConfigured,
+  signInWithGoogle,
+  signOutFromGoogle,
+  subscribeAuthState,
+  type FirebaseUser,
+} from "@/lib/firebase";
 import {
   loadRecords,
   loadSettings,
@@ -39,21 +48,98 @@ export default function Home() {
   const [records, setRecords] = useState<MonthlyRecord[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthValue());
+  const [cloudUser, setCloudUser] = useState<FirebaseUser | null>(null);
+  const [syncStatus, setSyncStatus] = useState("ローカル保存のみ");
+  const isCloudConfigured = isFirebaseConfigured();
+  const recordsRef = useRef<MonthlyRecord[]>([]);
+  const settingsRef = useRef<AppSettings | null>(null);
 
   useEffect(() => {
     setSettings(loadSettings());
     setRecords(sortRecords(loadRecords()));
   }, []);
 
+  useEffect(() => {
+    recordsRef.current = records;
+  }, [records]);
+
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
+  const isSettingsReady = Boolean(settings);
+
+  useEffect(() => {
+    if (!isCloudConfigured) {
+      setSyncStatus("Firebase設定を追加するとサーバー保存できます。");
+      return;
+    }
+
+    return subscribeAuthState((user) => {
+      setCloudUser(user);
+      setSyncStatus(user ? "Firestoreに接続中..." : "Google未ログイン");
+    });
+  }, [isCloudConfigured]);
+
+  useEffect(() => {
+    if (!isCloudConfigured || !cloudUser || !settingsRef.current) {
+      return;
+    }
+
+    const currentSettings = settingsRef.current;
+    setSyncStatus("Firestoreから読み込み中...");
+    return subscribeCloudData(
+      cloudUser.uid,
+      (cloudData) => {
+        if (!cloudData) {
+          saveCloudData(
+            cloudUser.uid,
+            recordsRef.current,
+            currentSettings,
+          )
+            .then(() => setSyncStatus("Firestoreに初期データを保存しました。"))
+            .catch(() => setSyncStatus("Firestore保存に失敗しました。"));
+          return;
+        }
+
+        const sortedCloudRecords = sortRecords(cloudData.records);
+        setRecords(sortedCloudRecords);
+        saveRecords(sortedCloudRecords);
+        setSettings(cloudData.settings);
+        saveSettings(cloudData.settings);
+        setSyncStatus("Firestore同期済み");
+      },
+      () => setSyncStatus("Firestoreの読み込みに失敗しました。"),
+    );
+  }, [cloudUser, isCloudConfigured, isSettingsReady]);
+
   const selectedRecord = useMemo(
     () => records.find((record) => record.month === selectedMonth) ?? null,
     [records, selectedMonth],
   );
 
-  function persistRecords(nextRecords: MonthlyRecord[]) {
+  function persistCloud(
+    nextRecords: MonthlyRecord[],
+    nextSettings = settingsRef.current,
+  ) {
+    if (!isCloudConfigured || !cloudUser || !nextSettings) {
+      return;
+    }
+
+    setSyncStatus("Firestoreへ保存中...");
+    saveCloudData(cloudUser.uid, nextRecords, nextSettings)
+      .then(() => setSyncStatus("Firestore同期済み"))
+      .catch(() => setSyncStatus("Firestore保存に失敗しました。"));
+  }
+
+  function persistRecords(
+    nextRecords: MonthlyRecord[],
+    nextSettings = settingsRef.current,
+  ) {
     const sorted = sortRecords(nextRecords);
     setRecords(sorted);
     saveRecords(sorted);
+    persistCloud(sorted, nextSettings);
   }
 
   function normalizeInputWithSettings(input: RecordInput): RecordInput | null {
@@ -136,6 +222,7 @@ export default function Home() {
     saveSettings(nextSettings);
     const selected = records.find((record) => record.month === selectedMonth);
     if (!selected) {
+      persistCloud(records, nextSettings);
       return;
     }
     const updated: MonthlyRecord = {
@@ -152,6 +239,7 @@ export default function Home() {
     };
     persistRecords(
       records.map((record) => (record.id === selected.id ? updated : record)),
+      nextSettings,
     );
   }
 
@@ -182,7 +270,7 @@ export default function Home() {
     persistRecords([
       ...records.filter((record) => !importedMonths.has(record.month)),
       ...importedRecords,
-    ]);
+    ], importedSettings);
     setSelectedMonth(newestImportedRecord.month);
   }
 
@@ -202,7 +290,9 @@ export default function Home() {
   return (
     <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:py-8">
       <header className="space-y-2">
-        <p className="text-sm font-semibold text-slate-500">ローカル保存</p>
+        <p className="text-sm font-semibold text-slate-500">
+          localStorage / Firestore
+        </p>
         <h1 className="text-2xl font-bold tracking-normal text-slate-950 sm:text-3xl">
           月別折半費用計算
         </h1>
@@ -210,6 +300,22 @@ export default function Home() {
           電気・ガス・ネット、水道、エネファーム、固定資産税の月別負担額を計算します。
         </p>
       </header>
+
+      <SyncPanel
+        isConfigured={isCloudConfigured}
+        user={cloudUser}
+        status={syncStatus}
+        onSignIn={() => {
+          signInWithGoogle().catch(() =>
+            setSyncStatus("Googleログインに失敗しました。"),
+          );
+        }}
+        onSignOut={() => {
+          signOutFromGoogle().catch(() =>
+            setSyncStatus("ログアウトに失敗しました。"),
+          );
+        }}
+      />
 
       <MonthlyChart
         records={records}
