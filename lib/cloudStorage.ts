@@ -108,7 +108,7 @@ export function subscribeCloudData(
   onData: (data: CloudData | null) => void,
   onError: (error: CloudError) => void,
 ): Unsubscribe {
-  let unsubscribe = () => undefined;
+  let unsubscribe = () => {};
   let cancelled = false;
 
   userDataRef(userId)

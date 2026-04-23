@@ -58,7 +58,7 @@ export function subscribeAuthState(
     return () => undefined;
   }
 
-  let unsubscribe = () => undefined;
+  let unsubscribe = () => {};
   let cancelled = false;
 
   getAuthService()
