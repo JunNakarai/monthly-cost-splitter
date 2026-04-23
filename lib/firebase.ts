@@ -1,15 +1,3 @@
-import { initializeApp, getApps } from "firebase/app";
-import {
-  getAuth,
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  signInWithPopup,
-  signInWithRedirect,
-  signOut,
-  type User,
-} from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -19,7 +7,10 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-export type FirebaseUser = User;
+export type FirebaseUser = {
+  uid: string;
+  email: string | null;
+};
 
 export function isFirebaseConfigured(): boolean {
   return Boolean(
@@ -30,38 +21,77 @@ export function isFirebaseConfigured(): boolean {
   );
 }
 
-function getFirebaseServices() {
+async function getFirebaseApp() {
   if (!isFirebaseConfigured()) {
     return null;
   }
-  const app =
-    getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
-  return {
-    auth: getAuth(app),
-    db: getFirestore(app),
-  };
+
+  const { initializeApp, getApps } = await import("firebase/app");
+  return getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
+}
+
+export async function getAuthService() {
+  const app = await getFirebaseApp();
+  if (!app) {
+    return null;
+  }
+
+  const { getAuth } = await import("firebase/auth");
+  return getAuth(app);
+}
+
+export async function getFirestoreDb() {
+  const app = await getFirebaseApp();
+  if (!app) {
+    return null;
+  }
+
+  const { getFirestore } = await import("firebase/firestore");
+  return getFirestore(app);
 }
 
 export function subscribeAuthState(
   onChange: (user: FirebaseUser | null) => void,
 ) {
-  const services = getFirebaseServices();
-  if (!services) {
+  if (!isFirebaseConfigured()) {
     onChange(null);
     return () => undefined;
   }
-  return onAuthStateChanged(services.auth, onChange);
+
+  let unsubscribe = () => undefined;
+  let cancelled = false;
+
+  getAuthService()
+    .then(async (auth) => {
+      if (!auth || cancelled) {
+        onChange(null);
+        return;
+      }
+      const { onAuthStateChanged } = await import("firebase/auth");
+      if (cancelled) {
+        return;
+      }
+      unsubscribe = onAuthStateChanged(auth, onChange);
+    })
+    .catch(() => onChange(null));
+
+  return () => {
+    cancelled = true;
+    unsubscribe();
+  };
 }
 
 export async function signInWithGoogle(): Promise<void> {
-  const services = getFirebaseServices();
-  if (!services) {
+  const auth = await getAuthService();
+  if (!auth) {
     throw new Error("Firebase is not configured.");
   }
 
+  const { GoogleAuthProvider, signInWithPopup, signInWithRedirect } =
+    await import("firebase/auth");
   const provider = new GoogleAuthProvider();
   try {
-    await signInWithPopup(services.auth, provider);
+    await signInWithPopup(auth, provider);
   } catch (error) {
     const code =
       typeof error === "object" && error && "code" in error
@@ -71,7 +101,7 @@ export async function signInWithGoogle(): Promise<void> {
       code === "auth/popup-blocked" ||
       code === "auth/operation-not-supported-in-this-environment"
     ) {
-      await signInWithRedirect(services.auth, provider);
+      await signInWithRedirect(auth, provider);
       return;
     }
     throw error;
@@ -79,13 +109,11 @@ export async function signInWithGoogle(): Promise<void> {
 }
 
 export async function signOutFromGoogle(): Promise<void> {
-  const services = getFirebaseServices();
-  if (!services) {
+  const auth = await getAuthService();
+  if (!auth) {
     return;
   }
-  await signOut(services.auth);
-}
 
-export function getFirestoreDb() {
-  return getFirebaseServices()?.db ?? null;
+  const { signOut } = await import("firebase/auth");
+  await signOut(auth);
 }
