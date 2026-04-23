@@ -12,6 +12,10 @@
 - CSVエクスポート/インポート
 - GitHub Pages 向け static export
 
+## Spec
+
+現在の詳しい仕様は [SPEC.md](./SPEC.md) に残しています。
+
 ## Development
 
 ```bash
