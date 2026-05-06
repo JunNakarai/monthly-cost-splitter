@@ -1,4 +1,5 @@
 import { calculateRecord } from "@/lib/calculations";
+import { createId } from "@/lib/schema";
 import type { MonthlyRecord } from "@/types";
 
 const CSV_COLUMNS = [
@@ -94,13 +95,6 @@ function parseNullableNumber(value: string | undefined): number | null {
 
 function parseNumber(value: string | undefined, fallback: number): number {
   return parseNullableNumber(value) ?? fallback;
-}
-
-function createId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 export function recordsFromCsv(csv: string): MonthlyRecord[] {

@@ -9,6 +9,7 @@ import { SyncPanel } from "@/components/SyncPanel";
 import { currentMonthValue, nextMonthValue } from "@/lib/defaults";
 import { recordsFromCsv } from "@/lib/csv";
 import { saveCloudData, subscribeCloudData } from "@/lib/cloudStorage";
+import { createId } from "@/lib/schema";
 import {
   isFirebaseConfigured,
   signInWithGoogle,
@@ -23,13 +24,6 @@ import {
   saveSettings,
 } from "@/lib/storage";
 import type { AppSettings, MonthlyRecord, RecordInput } from "@/types";
-
-function createId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
 
 function sortRecords(records: MonthlyRecord[]): MonthlyRecord[] {
   return [...records].sort((a, b) => b.month.localeCompare(a.month));

@@ -23,6 +23,17 @@ npm install
 npm run dev
 ```
 
+Before shipping changes, run:
+
+```bash
+npm run lint
+npm test
+npm run build
+```
+
+Generated directories such as `.next/`, `out/`, and `node_modules/` are ignored
+and should not be committed.
+
 ## Firebase
 
 GoogleログインとFirestore同期を使う場合は、Firebase Consoleで以下を設定します。

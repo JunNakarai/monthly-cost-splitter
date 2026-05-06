@@ -6,7 +6,6 @@ import {
   divisorFromShare,
 } from "@/lib/calculations";
 import {
-  createEmptyRecordInput,
   nextMonthValue,
   previousMonthValue,
 } from "@/lib/defaults";
@@ -15,6 +14,11 @@ import {
   formatNumberInput,
   parseNumberInput,
 } from "@/lib/format";
+import {
+  createInputForMonth,
+  isWaterInputMonth,
+  normalizeWaterInput,
+} from "@/lib/recordInput";
 import type { AppSettings, MonthlyRecord, RecordInput } from "@/types";
 
 type MonthlyFormProps = {
@@ -39,49 +43,6 @@ const shareFields = [
   { key: "eneFarmShare", label: "エネファームの負担割合" },
   { key: "fixedAssetShare", label: "固定資産税の負担割合" },
 ] as const;
-
-function isWaterInputMonth(month: string): boolean {
-  const monthNumber = Number(month.split("-")[1]);
-  return Number.isInteger(monthNumber) && monthNumber % 2 === 0;
-}
-
-function waterNormalizedInput(input: RecordInput): RecordInput {
-  return isWaterInputMonth(input.month) ? input : { ...input, water: null };
-}
-
-function toRecordInput(record: MonthlyRecord): RecordInput {
-  const electricityGasTotal = (record.electricity ?? 0) + (record.gas ?? 0);
-  return {
-    month: record.month,
-    electricity: electricityGasTotal > 0 ? electricityGasTotal : null,
-    gas: null,
-    internet: record.internet,
-    water: record.water,
-    eneFarm: record.eneFarm,
-    fixedAssetAnnual: record.fixedAssetAnnual,
-    utilityShare: record.utilityShare,
-    waterShare: record.waterShare,
-    waterSplitMonths: record.waterSplitMonths,
-    eneFarmShare: record.eneFarmShare,
-    eneFarmSplitMonths: record.eneFarmSplitMonths,
-    fixedAssetShare: record.fixedAssetShare,
-    note: "",
-  };
-}
-
-function createInputForMonth(
-  month: string,
-  settings: AppSettings,
-  record: MonthlyRecord | null,
-): RecordInput {
-  if (record) {
-    return toRecordInput(record);
-  }
-  return waterNormalizedInput({
-    ...createEmptyRecordInput(settings),
-    month,
-  });
-}
 
 function isSettingsManagedField(key: keyof RecordInput): boolean {
   return key === "eneFarm" || key === "fixedAssetAnnual";
@@ -149,7 +110,7 @@ export function MonthlyForm({
     key: K,
     value: RecordInput[K],
   ) {
-    const next = waterNormalizedInput({ ...input, [key]: value });
+    const next = normalizeWaterInput({ ...input, [key]: value });
     const validationErrors = validateInput(next);
     setInput(next);
     setErrors(validationErrors);
